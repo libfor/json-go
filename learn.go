@@ -39,8 +39,7 @@ type jsonDecoder interface {
 }
 
 type jsonStoredProcedure interface {
-	BaseAllocs() (int, int)
-	FromZero([]byte, int, int, uintptr) (int, error)
+	IntoPointer(decodeOperation, int, int, uintptr) (int, error)
 }
 
 type describer interface {
@@ -61,11 +60,8 @@ var zeroString = reflect.ValueOf("")
 
 type jsonRawString struct{}
 
-func (j jsonRawString) BaseAllocs() (int, int) {
-	return 1, 24
-}
-
-func (j jsonRawString) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+func (j jsonRawString) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	b := op.rawData
 	if Verbose {
 		fmt.Println("looking for raw string in:", string(b[p:end]))
 	}
@@ -94,11 +90,8 @@ func (j jsonRawString) FromZero(b []byte, p, end int, base uintptr) (int, error)
 
 type jsonEscapedString struct{}
 
-func (j jsonEscapedString) BaseAllocs() (int, int) {
-	return 1, 24
-}
-
-func (j jsonEscapedString) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+func (j jsonEscapedString) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	b := op.rawData
 	if Verbose {
 		fmt.Println("looking for escaped string in:", string(b[p:end]))
 	}
@@ -149,11 +142,8 @@ func newJsonArray(t reflect.Type, d describer) *jsonArray {
 	return j
 }
 
-func (j *jsonArray) BaseAllocs() (int, int) {
-	return 1, 24
-}
-
-func (j *jsonArray) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+func (j *jsonArray) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	b := op.rawData
 	if Verbose {
 		fmt.Println("looking for list in", string(b[p:end]))
 	}
@@ -227,7 +217,7 @@ func (j *jsonArray) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 				}
 				newPtr := unsafe.Pointer(&pointers[posInPointers-itemSize])
 
-				n, err := j.internalProc.FromZero(b, p-1, end, uintptr(newPtr))
+				n, err := j.internalProc.IntoPointer(op, p-1, end, uintptr(newPtr))
 				if err != nil {
 					if err != ErrUnexpectedListEnd {
 						return n, err
@@ -259,11 +249,8 @@ func newMaybeNull(t reflect.Type, d describer) *jsonMaybeNull {
 	}
 }
 
-func (j jsonMaybeNull) BaseAllocs() (int, int) {
-	return 1, 24
-}
-
-func (j jsonMaybeNull) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+func (j jsonMaybeNull) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	b := op.rawData
 	// base is a pointer to a potentially-nil pointer to a T
 	// we need to ensure it points to an initialized pointer to an initialized T
 
@@ -290,7 +277,7 @@ func (j jsonMaybeNull) FromZero(b []byte, p, end int, base uintptr) (int, error)
 		}
 	}
 
-	n, err := j.underlyingHandler.FromZero(b, p, end, reflect.Indirect(curPtr).Pointer())
+	n, err := j.underlyingHandler.IntoPointer(op, p, end, reflect.Indirect(curPtr).Pointer())
 	if err != nil {
 		return n, err
 	}
@@ -302,19 +289,16 @@ func (j jsonMaybeNull) FromZero(b []byte, p, end int, base uintptr) (int, error)
 
 type jsonAnything struct{}
 
-func (j jsonAnything) BaseAllocs() (int, int) {
-	return 0, 0
-}
-
-func (j jsonAnything) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+func (j jsonAnything) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	b := op.rawData
 	for p < end {
 		thisChar := b[p]
 		p += 1
 		if thisChar == '{' {
-			return (&jsonObject{}).FromZero(b, p-1, end, base)
+			return (&jsonObject{}).IntoPointer(op, p-1, end, base)
 		}
 		if thisChar == '"' {
-			return jsonRawString{}.FromZero(b, p-1, end, base)
+			return jsonRawString{}.IntoPointer(op, p-1, end, base)
 		}
 	}
 	return 0, ErrUnexpectedEOF
@@ -344,11 +328,8 @@ func newJsonMap(r reflect.Type, des describer) *jsonMap {
 	return j
 }
 
-func (j *jsonMap) BaseAllocs() (int, int) {
-	return 0, 0
-}
-
-func (j *jsonMap) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+func (j jsonMap) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	b := op.rawData
 	if Verbose {
 		fmt.Println("looking for map in", string(b[p:end]))
 	}
@@ -376,7 +357,7 @@ func (j *jsonMap) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 				thisChar := b[p]
 				p += 1
 				if thisChar == '"' {
-					n, err := j.left.FromZero(b, p-1, end, lPtr)
+					n, err := j.left.IntoPointer(op, p-1, end, lPtr)
 					if err != nil {
 						return n, err
 					}
@@ -385,7 +366,7 @@ func (j *jsonMap) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 						thisChar := b[p]
 						p += 1
 						if thisChar == ':' {
-							n, err := j.right.FromZero(b, p, end, rPtr)
+							n, err := j.right.IntoPointer(op, p, end, rPtr)
 							if err != nil {
 								return n, err
 							}
@@ -429,11 +410,8 @@ func newJsonObject(obj reflect.Type, des describer) *jsonObject {
 	return j
 }
 
-func (j *jsonObject) BaseAllocs() (int, int) {
-	return 0, 0
-}
-
-func (j *jsonObject) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+func (j jsonObject) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	b := op.rawData
 	if Verbose {
 		fmt.Println("looking for object in", string(b[p:end]))
 	}
@@ -470,7 +448,7 @@ func (j *jsonObject) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 										handler = j.offsets[fieldOffset]
 									}
 
-									n, err := handler.FromZero(b, p, end, offset)
+									n, err := handler.IntoPointer(op, p, end, offset)
 									if err != nil {
 										return n, err
 									}
@@ -527,6 +505,18 @@ func quickScan(b []byte) (ids [][3]int) {
 		}
 	}
 	return
+}
+
+type foundString struct {
+	pos        int
+	end        int
+	destinaton *string
+	raw        bool
+}
+
+type decodeOperation struct {
+	rawData []byte
+	strings *[]foundString
 }
 
 type Describers struct {
@@ -603,7 +593,8 @@ func (d *Describers) Unmarshal(b []byte, to interface{}) error {
 
 	reflect.Indirect(newPtr).Set(v)
 
-	_, err := desc.FromZero(b, 0, len(b), newPtr.Pointer())
+	op := decodeOperation{rawData: b}
+	_, err := desc.IntoPointer(op, 0, len(b), newPtr.Pointer())
 	if err != nil {
 		return err
 	}
