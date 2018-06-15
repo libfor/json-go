@@ -9,23 +9,29 @@ import (
 	"unsafe"
 )
 
+var AppendSlices = false
+
 type Nested struct {
 	Amazing string
 }
 
 type TestType struct {
-	Name   string
-	Food   string
-	Tags   map[string]string
-	Nested *Nested
+	Name      string
+	Food      string
+	Tags      map[string]string
+	Nested    *Nested
+	SomeList  []string
+	EmptyList []string
 }
 
 //easyjson:json
 type EasyType struct {
-	Name   string
-	Food   string
-	Tags   map[string]string
-	Nested *Nested
+	Name      string
+	Food      string
+	Tags      map[string]string
+	Nested    *Nested
+	SomeList  []string
+	EmptyList []string
 }
 
 type jsonDecoder interface {
@@ -33,6 +39,7 @@ type jsonDecoder interface {
 }
 
 type jsonStoredProcedure interface {
+	BaseAllocs() (int, int)
 	FromZero([]byte, int, int, uintptr) (int, error)
 }
 
@@ -48,22 +55,31 @@ var ErrUnexpectedEOF = errors.New("unexpected EOF")
 
 var ErrNotImplemented = errors.New("not implemented")
 
+var ErrUnexpectedListEnd = errors.New("unexpected ]")
+
 var zeroString = reflect.ValueOf("")
 
-type jsonString struct{}
+type jsonRawString struct{}
 
-func (j jsonString) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+func (j jsonRawString) BaseAllocs() (int, int) {
+	return 1, 24
+}
+
+func (j jsonRawString) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+	if Verbose {
+		fmt.Println("looking for raw string in:", string(b[p:end]))
+	}
 	for p < end {
 		thisChar := b[p]
+		if thisChar == ']' {
+			return p, ErrUnexpectedListEnd
+		}
 		p += 1
 		if thisChar == '"' {
 			start := p
 			for p < end {
 				thisChar := b[p]
 				p += 1
-				if thisChar == '\\' {
-					continue
-				}
 				if thisChar == '"' {
 					if base != 0 {
 						*(*string)(unsafe.Pointer(base)) = string(b[start : p-1])
@@ -76,11 +92,159 @@ func (j jsonString) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 	return end, ErrUnexpectedEOF
 }
 
-func (j jsonString) FromPointer(b []byte, p, end int, base uintptr) (int, error) {
-	return end, ErrNotImplemented
+type jsonEscapedString struct{}
+
+func (j jsonEscapedString) BaseAllocs() (int, int) {
+	return 1, 24
+}
+
+func (j jsonEscapedString) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+	if Verbose {
+		fmt.Println("looking for escaped string in:", string(b[p:end]))
+	}
+	for p < end {
+		thisChar := b[p]
+		if thisChar == ']' {
+			if Verbose {
+				fmt.Println("escaped string saw unexpected list end")
+			}
+			return p, ErrUnexpectedListEnd
+		}
+		p += 1
+		if thisChar == '"' {
+			start := p
+			for p < end {
+				thisChar := b[p]
+				p += 1
+				if thisChar == '"' {
+					if base != 0 {
+						*(*string)(unsafe.Pointer(base)) = string(b[start : p-1])
+						if Verbose {
+							fmt.Println("found escaped string in:", string(b[start:p-1]))
+						}
+					}
+					return p, nil
+				}
+			}
+		}
+	}
+	return end, ErrUnexpectedEOF
+}
+
+type jsonArray struct {
+	sliceType    reflect.Type
+	internalProc jsonStoredProcedure
+	internalType reflect.Type
+
+	blankSpace []byte
+}
+
+func newJsonArray(t reflect.Type, d describer) *jsonArray {
+	e := t.Elem()
+	j := &jsonArray{sliceType: t, internalProc: d.Describe(e)}
+
+	j.internalType = e
+	itemSize := int(e.Size())
+	j.blankSpace = make([]byte, itemSize)
+	return j
+}
+
+func (j *jsonArray) BaseAllocs() (int, int) {
+	return 1, 24
+}
+
+func (j *jsonArray) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+	if Verbose {
+		fmt.Println("looking for list in", string(b[p:end]))
+	}
+
+	itemSize := int(j.internalType.Size())
+
+	l := 0
+	var pointers []byte
+	posInPointers := 0
+
+	for p < end {
+		thisChar := b[p]
+		if thisChar == ']' {
+			return p, ErrUnexpectedListEnd
+		}
+		p += 1
+		if thisChar == '[' {
+			start := p - 1
+			for p < end {
+			anotherItem:
+				thisChar := b[p]
+				p += 1
+
+				if thisChar == ']' {
+					arr := reflect.NewAt(j.sliceType, unsafe.Pointer(base))
+					currSlice := reflect.Indirect(arr)
+					if posInPointers > 0 {
+						amt := posInPointers / itemSize
+						asArrayType := reflect.ArrayOf(amt, j.internalType)
+						asArray := reflect.NewAt(asArrayType, unsafe.Pointer(&pointers[0]))
+						nt := reflect.Indirect(asArray).Slice(0, amt)
+						if currSlice.IsNil() {
+							currSlice.Set(nt)
+						} else {
+							if AppendSlices {
+								currSlice.Set(reflect.AppendSlice(currSlice, nt))
+							} else {
+								currSlice.Set(nt)
+							}
+						}
+					} else {
+						if currSlice.IsNil() {
+							newArr := reflect.Indirect(reflect.MakeSlice(j.sliceType, 0, 0))
+							currSlice.Set(newArr)
+						}
+					}
+					if Verbose {
+						fmt.Println("found list", string(b[start:p]))
+					}
+					return p, nil
+				}
+
+				posInPointers += itemSize
+				if Verbose {
+					fmt.Println("current pos", posInPointers, l)
+				}
+
+				if l == 0 {
+					l = itemSize * 4
+					pointers = make([]byte, l, l)
+				}
+				if cap(pointers) < posInPointers {
+					l = l * 5 / 3
+					if Verbose {
+						fmt.Println("have to grow to", l)
+					}
+					np := make([]byte, l, l)
+					copy(np, pointers)
+					pointers = np
+
+				}
+				newPtr := unsafe.Pointer(&pointers[posInPointers-itemSize])
+
+				n, err := j.internalProc.FromZero(b, p-1, end, uintptr(newPtr))
+				if err != nil {
+					if err != ErrUnexpectedListEnd {
+						return n, err
+					}
+					posInPointers -= itemSize
+				}
+				p = n
+				goto anotherItem
+			}
+		}
+	}
+	return end, ErrUnexpectedEOF
 }
 
 type jsonMaybeNull struct {
+	parentType        reflect.Type
+	ptrType           reflect.Type
 	underlyingType    reflect.Type
 	underlyingHandler jsonStoredProcedure
 }
@@ -88,25 +252,59 @@ type jsonMaybeNull struct {
 func newMaybeNull(t reflect.Type, d describer) *jsonMaybeNull {
 	underT := t.Elem()
 	return &jsonMaybeNull{
+		parentType:        reflect.PtrTo(t),
+		ptrType:           t,
 		underlyingType:    underT,
 		underlyingHandler: d.Describe(underT),
 	}
 }
 
-func (j jsonMaybeNull) FromZero(b []byte, p, end int, base uintptr) (int, error) {
-	curObj := reflect.NewAt(j.underlyingType, unsafe.Pointer(base))
-	if curObj.IsNil() {
-		newMap := reflect.Indirect(reflect.MakeMap(j.underlyingType))
-		curObj.Set(newMap)
-	}
-	return j.underlyingHandler.FromZero(b, p, end, curObj.Pointer())
+func (j jsonMaybeNull) BaseAllocs() (int, int) {
+	return 1, 24
 }
 
-func (j jsonMaybeNull) FromPointer(b []byte, p, end int, base uintptr) (int, error) {
-	return end, ErrNotImplemented
+func (j jsonMaybeNull) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+	// base is a pointer to a potentially-nil pointer to a T
+	// we need to ensure it points to an initialized pointer to an initialized T
+
+	if Verbose {
+		fmt.Println(j.ptrType.String(), "looking for maybe null: ", string(b[p:end]))
+	}
+
+	curPtr := reflect.NewAt(j.ptrType, unsafe.Pointer(base))
+	if reflect.Indirect(curPtr).IsNil() {
+
+		newInstance := reflect.New(j.underlyingType)
+
+		if Verbose {
+			fmt.Println("found nil, curptr is", curPtr.String())
+			fmt.Println("new instance", newInstance.String())
+			fmt.Println("setting curptr to", newInstance.String())
+			fmt.Printf("... AKA %#v\n", newInstance.Interface())
+		}
+
+		reflect.Indirect(curPtr).Set(newInstance)
+	} else {
+		if Verbose {
+			fmt.Println("not nil", curPtr.String())
+		}
+	}
+
+	n, err := j.underlyingHandler.FromZero(b, p, end, reflect.Indirect(curPtr).Pointer())
+	if err != nil {
+		return n, err
+	}
+	if Verbose {
+		fmt.Println("found maybe null: ", string(b[p:n]))
+	}
+	return n, nil
 }
 
 type jsonAnything struct{}
+
+func (j jsonAnything) BaseAllocs() (int, int) {
+	return 0, 0
+}
 
 func (j jsonAnything) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 	for p < end {
@@ -116,7 +314,7 @@ func (j jsonAnything) FromZero(b []byte, p, end int, base uintptr) (int, error) 
 			return (&jsonObject{}).FromZero(b, p-1, end, base)
 		}
 		if thisChar == '"' {
-			return jsonString{}.FromZero(b, p-1, end, base)
+			return jsonRawString{}.FromZero(b, p-1, end, base)
 		}
 	}
 	return 0, ErrUnexpectedEOF
@@ -136,7 +334,7 @@ type jsonMap struct {
 
 func newJsonMap(r reflect.Type, des describer) *jsonMap {
 	j := &jsonMap{}
-	j.left = des.Describe(r.Key())
+	j.left = jsonRawString{}
 	j.leftType = r.Key()
 
 	j.right = des.Describe(r.Elem())
@@ -146,14 +344,25 @@ func newJsonMap(r reflect.Type, des describer) *jsonMap {
 	return j
 }
 
+func (j *jsonMap) BaseAllocs() (int, int) {
+	return 0, 0
+}
+
 func (j *jsonMap) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+	if Verbose {
+		fmt.Println("looking for map in", string(b[p:end]))
+	}
 	currentMap := reflect.Indirect(reflect.NewAt(j.all, unsafe.Pointer(base)))
 	if reflect.Indirect(currentMap).IsNil() {
 		newMap := reflect.Indirect(reflect.MakeMap(j.all))
 		currentMap.Set(newMap)
 	}
+
+	// itemSize := j.rightType.Size()
+
 	lSide := reflect.New(j.leftType)
 	rSide := reflect.New(j.rightType)
+
 	lPtr := lSide.Pointer()
 	rPtr := rSide.Pointer()
 
@@ -161,6 +370,7 @@ func (j *jsonMap) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 		thisChar := b[p]
 		p += 1
 		if thisChar == '{' {
+			mapStart := p - 1
 			for p < end {
 			anotherKey:
 				thisChar := b[p]
@@ -181,18 +391,15 @@ func (j *jsonMap) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 							}
 							p = n
 							currentMap.SetMapIndex(reflect.Indirect(lSide), reflect.Indirect(rSide))
-							for p < end {
-								thisChar := b[p]
-								p += 1
-								if thisChar == ',' {
-									goto anotherKey
-								}
-								if thisChar == '}' {
-									return p, nil
-								}
-							}
+							goto anotherKey
 						}
 					}
+				}
+				if thisChar == '}' {
+					if Verbose {
+						fmt.Println("found map:", string(b[mapStart:p]))
+					}
+					return p, nil
 				}
 			}
 		}
@@ -216,15 +423,28 @@ func newJsonObject(obj reflect.Type, des describer) *jsonObject {
 		fields[f.Name] = f.Offset
 		offsets[f.Offset] = des.Describe(f.Type)
 	}
-	fmt.Println(obj.String(), j.fields)
+	if Verbose {
+		fmt.Println(obj.String(), j.fields)
+	}
 	return j
 }
 
+func (j *jsonObject) BaseAllocs() (int, int) {
+	return 0, 0
+}
+
 func (j *jsonObject) FromZero(b []byte, p, end int, base uintptr) (int, error) {
+	if Verbose {
+		fmt.Println("looking for object in", string(b[p:end]))
+	}
 	for p < end {
 		thisChar := b[p]
+		if thisChar == ']' {
+			return p, ErrUnexpectedListEnd
+		}
 		p += 1
 		if thisChar == '{' {
+			objStart := p - 1
 			for p < end {
 			anotherKey:
 				thisChar := b[p]
@@ -234,9 +454,6 @@ func (j *jsonObject) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 					for p < end {
 						thisChar := b[p]
 						p += 1
-						if thisChar == '\\' {
-							continue
-						}
 						if thisChar == '"' {
 							key := string(b[start : p-1])
 							for p < end {
@@ -258,20 +475,17 @@ func (j *jsonObject) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 										return n, err
 									}
 									p = n
-									for p < end {
-										thisChar := b[p]
-										p += 1
-										if thisChar == ',' {
-											goto anotherKey
-										}
-										if thisChar == '}' {
-											return p, nil
-										}
-									}
+									goto anotherKey
 								}
 							}
 						}
 					}
+				}
+				if thisChar == '}' {
+					if Verbose {
+						fmt.Println("found obj in:", string(b[objStart:p]))
+					}
+					return p, nil
 				}
 			}
 		}
@@ -279,30 +493,41 @@ func (j *jsonObject) FromZero(b []byte, p, end int, base uintptr) (int, error) {
 	return end, ErrUnexpectedEOF
 }
 
-// func (j *jsonObject) Apply(base uintptr, r io.Reader) (total int, err error) {
-// 	// if n, err := r.Read(make([]byte, 10)); err != nil {
-// 	// 	return total, err
-// 	// } else {
-// 	// 	total += n
-// 	// }
-
-// 	// b := make([]byte, 5)
-// 	// if n, err := r.Read(b); err != nil {
-// 	// 	return total, err
-// 	// } else {
-// 	// 	total += n
-// 	// }
-
-// 	// *(*string)(unsafe.Pointer(base + j.NameOffset)) = string(b)
-
-// 	// if n, err := r.Read(make([]byte, 2)); err != nil {
-// 	// 	return total, err
-// 	// } else {
-// 	// 	total += n
-// 	// }
-
-// 	// return
-// }
+func quickScan(b []byte) (ids [][3]int) {
+	end := len(b)
+	p := 0
+	for p < end {
+	anotherElement:
+		thisChar := b[p]
+		p += 1
+		if thisChar == '"' {
+			start := p - 1
+			for p < end {
+				thisChar := b[p]
+				p += 1
+				if thisChar == '\\' {
+					continue
+				}
+				if thisChar == '"' {
+					strEnd := p
+					for p < end {
+						thisChar := b[p]
+						p += 1
+						if thisChar == ':' {
+							ids = append(ids, [3]int{start, strEnd, 0})
+							goto anotherElement
+						}
+						if thisChar == ']' || thisChar == '}' || thisChar == ',' {
+							ids = append(ids, [3]int{start, strEnd, 1})
+							goto anotherElement
+						}
+					}
+				}
+			}
+		}
+	}
+	return
+}
 
 type Describers struct {
 	allTypes     sync.Map
@@ -314,16 +539,17 @@ func NewDescriber() *Describers {
 }
 
 func (d *Describers) LearnAbout(t reflect.Type) jsonStoredProcedure {
-	fmt.Println("learning about", t)
 	switch t.Kind() {
 	case reflect.Ptr:
 		return newMaybeNull(t, d)
 	case reflect.Map:
 		return newJsonMap(t, d)
 	case reflect.String:
-		return jsonString{}
+		return jsonEscapedString{}
 	case reflect.Struct:
 		return newJsonObject(t, d)
+	case reflect.Slice:
+		return newJsonArray(t, d)
 	default:
 		panic(fmt.Sprintf("unhandled type %s", t))
 	}
@@ -341,14 +567,18 @@ func (d *Describers) Describe(t reflect.Type) jsonStoredProcedure {
 
 	loading, already := d.pendingTypes.LoadOrStore(t, lockIt)
 	if already {
-		fmt.Println("waiting for someone to complete", t.String())
+		if Verbose {
+			fmt.Println("waiting for someone to complete", t.String())
+		}
 		found := loading.(*sync.Cond)
 		found.Wait()
 		return d.Describe(t)
 	}
 
 	newProc := d.LearnAbout(t)
-	fmt.Printf("storing new encoder %s: %T\n", t.String(), newProc)
+	if Verbose {
+		fmt.Printf("storing new encoder %s: %T\n", t.String(), newProc)
+	}
 
 	d.allTypes.Store(t, newProc)
 	lockIt.Broadcast()
@@ -358,8 +588,22 @@ func (d *Describers) Describe(t reflect.Type) jsonStoredProcedure {
 }
 
 func (d *Describers) Unmarshal(b []byte, to interface{}) error {
-	desc := d.Describe(reflect.TypeOf(to))
-	_, err := desc.FromZero(b, 0, len(b), reflect.ValueOf(to).Pointer())
+	t := reflect.TypeOf(to)
+	desc := d.Describe(t)
+
+	// create a pointer to whatever i've been given
+	v := reflect.ValueOf(to)
+
+	newPtr := reflect.NewAt(t, unsafe.Pointer(v.Pointer()))
+
+	if Verbose {
+		fmt.Println("unmarshalling", newPtr.String(), newPtr.Interface(), newPtr.Pointer())
+		fmt.Printf("into %T\n", desc)
+	}
+
+	reflect.Indirect(newPtr).Set(v)
+
+	_, err := desc.FromZero(b, 0, len(b), newPtr.Pointer())
 	if err != nil {
 		return err
 	}

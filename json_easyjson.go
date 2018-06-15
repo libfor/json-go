@@ -70,6 +70,52 @@ func easyjson42239ddeDecodeGithubComLibforJson(in *jlexer.Lexer, out *EasyType) 
 				}
 				easyjson42239ddeDecodeGithubComLibforJson1(in, &*out.Nested)
 			}
+		case "SomeList":
+			if in.IsNull() {
+				in.Skip()
+				out.SomeList = nil
+			} else {
+				in.Delim('[')
+				if out.SomeList == nil {
+					if !in.IsDelim(']') {
+						out.SomeList = make([]string, 0, 4)
+					} else {
+						out.SomeList = []string{}
+					}
+				} else {
+					out.SomeList = (out.SomeList)[:0]
+				}
+				for !in.IsDelim(']') {
+					var v2 string
+					v2 = string(in.String())
+					out.SomeList = append(out.SomeList, v2)
+					in.WantComma()
+				}
+				in.Delim(']')
+			}
+		case "EmptyList":
+			if in.IsNull() {
+				in.Skip()
+				out.EmptyList = nil
+			} else {
+				in.Delim('[')
+				if out.EmptyList == nil {
+					if !in.IsDelim(']') {
+						out.EmptyList = make([]string, 0, 4)
+					} else {
+						out.EmptyList = []string{}
+					}
+				} else {
+					out.EmptyList = (out.EmptyList)[:0]
+				}
+				for !in.IsDelim(']') {
+					var v3 string
+					v3 = string(in.String())
+					out.EmptyList = append(out.EmptyList, v3)
+					in.WantComma()
+				}
+				in.Delim(']')
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -116,16 +162,16 @@ func easyjson42239ddeEncodeGithubComLibforJson(out *jwriter.Writer, in EasyType)
 			out.RawString(`null`)
 		} else {
 			out.RawByte('{')
-			v2First := true
-			for v2Name, v2Value := range in.Tags {
-				if v2First {
-					v2First = false
+			v4First := true
+			for v4Name, v4Value := range in.Tags {
+				if v4First {
+					v4First = false
 				} else {
 					out.RawByte(',')
 				}
-				out.String(string(v2Name))
+				out.String(string(v4Name))
 				out.RawByte(':')
-				out.String(string(v2Value))
+				out.String(string(v4Value))
 			}
 			out.RawByte('}')
 		}
@@ -142,6 +188,48 @@ func easyjson42239ddeEncodeGithubComLibforJson(out *jwriter.Writer, in EasyType)
 			out.RawString("null")
 		} else {
 			easyjson42239ddeEncodeGithubComLibforJson1(out, *in.Nested)
+		}
+	}
+	{
+		const prefix string = ",\"SomeList\":"
+		if first {
+			first = false
+			out.RawString(prefix[1:])
+		} else {
+			out.RawString(prefix)
+		}
+		if in.SomeList == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+			out.RawString("null")
+		} else {
+			out.RawByte('[')
+			for v5, v6 := range in.SomeList {
+				if v5 > 0 {
+					out.RawByte(',')
+				}
+				out.String(string(v6))
+			}
+			out.RawByte(']')
+		}
+	}
+	{
+		const prefix string = ",\"EmptyList\":"
+		if first {
+			first = false
+			out.RawString(prefix[1:])
+		} else {
+			out.RawString(prefix)
+		}
+		if in.EmptyList == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+			out.RawString("null")
+		} else {
+			out.RawByte('[')
+			for v7, v8 := range in.EmptyList {
+				if v7 > 0 {
+					out.RawByte(',')
+				}
+				out.String(string(v8))
+			}
+			out.RawByte(']')
 		}
 	}
 	out.RawByte('}')
