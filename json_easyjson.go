@@ -116,6 +116,14 @@ func easyjson42239ddeDecodeGithubComLibforJson(in *jlexer.Lexer, out *EasyType) 
 				}
 				in.Delim(']')
 			}
+		case "SurpriseMe":
+			if m, ok := out.SurpriseMe.(easyjson.Unmarshaler); ok {
+				m.UnmarshalEasyJSON(in)
+			} else if m, ok := out.SurpriseMe.(json.Unmarshaler); ok {
+				_ = m.UnmarshalJSON(in.Raw())
+			} else {
+				out.SurpriseMe = in.Interface()
+			}
 		default:
 			in.SkipRecursive()
 		}
@@ -230,6 +238,22 @@ func easyjson42239ddeEncodeGithubComLibforJson(out *jwriter.Writer, in EasyType)
 				out.String(string(v8))
 			}
 			out.RawByte(']')
+		}
+	}
+	{
+		const prefix string = ",\"SurpriseMe\":"
+		if first {
+			first = false
+			out.RawString(prefix[1:])
+		} else {
+			out.RawString(prefix)
+		}
+		if m, ok := in.SurpriseMe.(easyjson.Marshaler); ok {
+			m.MarshalEasyJSON(out)
+		} else if m, ok := in.SurpriseMe.(json.Marshaler); ok {
+			out.Raw(m.MarshalJSON())
+		} else {
+			out.Raw(json.Marshal(in.SurpriseMe))
 		}
 	}
 	out.RawByte('}')
