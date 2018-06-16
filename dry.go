@@ -2,4 +2,4 @@
 
 package json
 
-const DryRun = true
+const dryRun = true

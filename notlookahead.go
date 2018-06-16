@@ -2,4 +2,4 @@
 
 package json
 
-const LookAhead = false
+const lookAhead = false

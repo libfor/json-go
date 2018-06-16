@@ -80,10 +80,10 @@ func TestInterface(t *testing.T) {
 }
 
 func TestCorrectnessMixed(t *testing.T) {
-	obj := &TestType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
+	obj := &testType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
 	err := Unmarshal(str, obj)
 
-	obj2 := &TestType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
+	obj2 := &testType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
 	err2 := json.Unmarshal(str, obj2)
 
 	t.Logf("obj: \n%#v, err: %s", obj, err)
@@ -105,29 +105,29 @@ type BrokenObject struct {
 }
 
 func TestReporting(t *testing.T) {
-	var obj *TestType
-	d := Standard.ReportPlan(&obj)
+	var obj *testType
+	d := ReportPlan(&obj)
 	t.Log(d.String())
 
 	{
 		var obj ***[][]string
-		d := Standard.ReportPlan(&obj)
+		d := ReportPlan(&obj)
 		t.Log(d.String())
 	}
 
 	{
 		var obj string
-		d := Standard.ReportPlan(&obj)
+		d := ReportPlan(&obj)
 		t.Log(d.String())
 	}
 
 }
 
 func TestCorrectness3(t *testing.T) {
-	obj := &TestType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
+	obj := &testType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
 	err := Unmarshal(str3, obj)
 
-	obj2 := &TestType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
+	obj2 := &testType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
 	err2 := json.Unmarshal(str3, obj2)
 
 	t.Logf("obj: \n%#v, err: %s", obj, err)
@@ -141,8 +141,10 @@ func TestCorrectness3(t *testing.T) {
 	}
 }
 
+var jsoni = jsoniter.ConfigFastest
+
 func TestEasyUnmarshal(t *testing.T) {
-	obj := &EasyType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
+	obj := &easyType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
 	err := easyjson.Unmarshal(str, obj)
 
 	t.Logf("obj: %#v, err: %s", obj, err)
@@ -157,95 +159,100 @@ func BenchmarkQuickScan(b *testing.B) {
 	}
 }
 
-func BenchmarkNewSingle(b *testing.B) {
+func BenchmarkSerially_Libfor(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		t := &TestType{SomeList: []string{"already in"}}
+		t := &testType{SomeList: []string{"already in"}}
 		Unmarshal(strWithList, t)
 	}
 }
 
-func BenchmarkOldSingle(b *testing.B) {
+func BenchmarkSerially_StdlibJson(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		t := &TestType{SomeList: []string{"already in"}}
+		t := &testType{SomeList: []string{"already in"}}
 		json.Unmarshal(strWithList, t)
 	}
 }
 
-func BenchmarkEasySingle(b *testing.B) {
+func BenchmarkSerially_Iterjson(b *testing.B) {
 	for i := 0; i < b.N; i++ {
-		t := &EasyType{SomeList: []string{"already in"}}
+		t := &testType{SomeList: []string{"already in"}}
+		jsoni.Unmarshal(strWithList, t)
+	}
+}
+
+func BenchmarkSerially_Easyjson(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		t := &easyType{SomeList: []string{"already in"}}
 		easyjson.Unmarshal(strWithList, t)
 	}
 }
 
-func BenchmarkNewParallel(b *testing.B) {
+func BenchmarkParallel_Libfor(b *testing.B) {
 	b.RunParallel(
 		func(pb *testing.PB) {
-			var t *TestType
+			var t *testType
 			for pb.Next() {
-				t = &TestType{}
+				t = &testType{}
 				Unmarshal(str, t)
-				t = &TestType{}
+				t = &testType{}
 				Unmarshal(str1, t)
-				t = &TestType{}
+				t = &testType{}
 				Unmarshal(str2, t)
-				t = &TestType{}
+				t = &testType{}
 				Unmarshal(str3, t)
 			}
 		},
 	)
 }
 
-func BenchmarkOldParallel(b *testing.B) {
+func BenchmarkParallel_StdlibJson(b *testing.B) {
 	b.RunParallel(
 		func(pb *testing.PB) {
-			var t *TestType
+			var t *testType
 			for pb.Next() {
-				t = &TestType{}
+				t = &testType{}
 				json.Unmarshal(str, t)
-				t = &TestType{}
+				t = &testType{}
 				json.Unmarshal(str1, t)
-				t = &TestType{}
+				t = &testType{}
 				json.Unmarshal(str2, t)
-				t = &TestType{}
+				t = &testType{}
 				json.Unmarshal(str3, t)
 			}
 		},
 	)
 }
 
-var jsoni = jsoniter.ConfigFastest
-
-func BenchmarkIterParallel(b *testing.B) {
+func BenchmarkParallel_Iterjson(b *testing.B) {
 	b.RunParallel(
 		func(pb *testing.PB) {
-			var t *TestType
+			var t *testType
 			for pb.Next() {
-				t = &TestType{}
+				t = &testType{}
 				jsoni.Unmarshal(str, t)
-				t = &TestType{}
+				t = &testType{}
 				jsoni.Unmarshal(str1, t)
-				t = &TestType{}
+				t = &testType{}
 				jsoni.Unmarshal(str2, t)
-				t = &TestType{}
+				t = &testType{}
 				jsoni.Unmarshal(str3, t)
 			}
 		},
 	)
 }
 
-func BenchmarkEasyParallel(b *testing.B) {
+func BenchmarkParallel_Easyjson(b *testing.B) {
 	b.RunParallel(
 		func(pb *testing.PB) {
-			var t *EasyType
+			var t *easyType
 			for pb.Next() {
-				t = &EasyType{}
+				t = &easyType{}
 				easyjson.Unmarshal(str, t)
-				t = &EasyType{}
+				t = &easyType{}
 				easyjson.Unmarshal(str1, t)
-				t = &EasyType{}
+				t = &easyType{}
 				easyjson.Unmarshal(str2, t)
-				t = &EasyType{}
+				t = &easyType{}
 				easyjson.Unmarshal(str3, t)
 			}
 		},

@@ -17,7 +17,7 @@ var (
 	_ easyjson.Marshaler
 )
 
-func easyjson42239ddeDecodeGithubComLibforJson(in *jlexer.Lexer, out *EasyType) {
+func easyjson42239ddeDecodeGithubComLibforJson(in *jlexer.Lexer, out *easyType) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -66,7 +66,7 @@ func easyjson42239ddeDecodeGithubComLibforJson(in *jlexer.Lexer, out *EasyType) 
 				out.Nested = nil
 			} else {
 				if out.Nested == nil {
-					out.Nested = new(Nested)
+					out.Nested = new(nested)
 				}
 				easyjson42239ddeDecodeGithubComLibforJson1(in, &*out.Nested)
 			}
@@ -134,7 +134,7 @@ func easyjson42239ddeDecodeGithubComLibforJson(in *jlexer.Lexer, out *EasyType) 
 		in.Consumed()
 	}
 }
-func easyjson42239ddeEncodeGithubComLibforJson(out *jwriter.Writer, in EasyType) {
+func easyjson42239ddeEncodeGithubComLibforJson(out *jwriter.Writer, in easyType) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -260,29 +260,29 @@ func easyjson42239ddeEncodeGithubComLibforJson(out *jwriter.Writer, in EasyType)
 }
 
 // MarshalJSON supports json.Marshaler interface
-func (v EasyType) MarshalJSON() ([]byte, error) {
+func (v easyType) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
 	easyjson42239ddeEncodeGithubComLibforJson(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
-func (v EasyType) MarshalEasyJSON(w *jwriter.Writer) {
+func (v easyType) MarshalEasyJSON(w *jwriter.Writer) {
 	easyjson42239ddeEncodeGithubComLibforJson(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
-func (v *EasyType) UnmarshalJSON(data []byte) error {
+func (v *easyType) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
 	easyjson42239ddeDecodeGithubComLibforJson(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
-func (v *EasyType) UnmarshalEasyJSON(l *jlexer.Lexer) {
+func (v *easyType) UnmarshalEasyJSON(l *jlexer.Lexer) {
 	easyjson42239ddeDecodeGithubComLibforJson(l, v)
 }
-func easyjson42239ddeDecodeGithubComLibforJson1(in *jlexer.Lexer, out *Nested) {
+func easyjson42239ddeDecodeGithubComLibforJson1(in *jlexer.Lexer, out *nested) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -313,7 +313,7 @@ func easyjson42239ddeDecodeGithubComLibforJson1(in *jlexer.Lexer, out *Nested) {
 		in.Consumed()
 	}
 }
-func easyjson42239ddeEncodeGithubComLibforJson1(out *jwriter.Writer, in Nested) {
+func easyjson42239ddeEncodeGithubComLibforJson1(out *jwriter.Writer, in nested) {
 	out.RawByte('{')
 	first := true
 	_ = first

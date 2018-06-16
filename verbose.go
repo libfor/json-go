@@ -2,4 +2,4 @@
 
 package json
 
-const Verbose = true
+const verbose = true

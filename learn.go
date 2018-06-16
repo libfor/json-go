@@ -11,19 +11,19 @@ import (
 	"unsafe"
 )
 
-const DefaultMapSize = 4
+const defaultMapSize = 4
 
-const AppendSlices = false
+const appendSlices = false
 
-type Nested struct {
+type nested struct {
 	Amazing string
 }
 
-type TestType struct {
+type testType struct {
 	Name      string
 	Food      string
 	Tags      map[string]string
-	Nested    *Nested
+	Nested    *nested
 	SomeList  []string
 	EmptyList []string
 
@@ -31,8 +31,8 @@ type TestType struct {
 }
 
 func init() {
-	if Verbose {
-		fmt.Printf("libfor/json[verbose:true,dryrun:%t,lookahead:%t]\n", DryRun, LookAhead)
+	if verbose {
+		fmt.Printf("libfor/json[verbose:true,dryrun:%t,lookahead:%t]\n", dryRun, lookAhead)
 	}
 }
 
@@ -111,7 +111,7 @@ func (j jsonRawString) IntoPointer(op decodeOperation, p, end int, base uintptr)
 		panic("bad value here " + fmt.Sprintf("%#v", op.mode))
 	}
 	b := op.rawData
-	if Verbose {
+	if verbose {
 		if op.mode == ModeSkip {
 			fmt.Println(fmt.Sprintf("%T", j), "discarding raw string in:", string(b[p:end]))
 		} else {
@@ -133,7 +133,7 @@ func (j jsonRawString) IntoPointer(op decodeOperation, p, end int, base uintptr)
 				thisChar := b[p]
 				p += 1
 				if thisChar == '"' {
-					if Verbose {
+					if verbose {
 						fmt.Printf("found raw string in: %#v\n", string(b[start-1:p]))
 					}
 					if base != 0 {
@@ -161,7 +161,7 @@ func (j jsonEscapedString) IntoPointer(op decodeOperation, p, end int, base uint
 		panic("bad value here " + fmt.Sprintf("%#v", op.mode))
 	}
 	b := op.rawData
-	if Verbose {
+	if verbose {
 		if op.mode == ModeSkip {
 			fmt.Println(fmt.Sprintf("%T", j), "discarding escaped string in:", string(b[p:end]))
 		} else {
@@ -183,7 +183,7 @@ func (j jsonEscapedString) IntoPointer(op decodeOperation, p, end int, base uint
 				thisChar := b[p]
 				p += 1
 				if thisChar == '"' {
-					if Verbose {
+					if verbose {
 						fmt.Printf("found escaped string in: %#v\n", string(b[start-1:p]))
 					}
 					if base != 0 {
@@ -240,7 +240,7 @@ func (j jsonArray) IntoPointer(op decodeOperation, p, end int, base uintptr) (in
 	}
 
 	b := op.rawData
-	if Verbose {
+	if verbose {
 		if op.mode == ModeSkip {
 			fmt.Println(fmt.Sprintf("%T", j), "discarding list in", string(b[p:end]))
 		} else {
@@ -277,7 +277,7 @@ func (j jsonArray) IntoPointer(op decodeOperation, p, end int, base uintptr) (in
 					if store {
 						switch j.cache {
 						case 's':
-							if Verbose {
+							if verbose {
 								fmt.Println("we know it's a slice of strings")
 							}
 							if posInPointers > 0 {
@@ -300,7 +300,7 @@ func (j jsonArray) IntoPointer(op decodeOperation, p, end int, base uintptr) (in
 								if currSlice.IsNil() {
 									currSlice.Set(nt)
 								} else {
-									if AppendSlices {
+									if appendSlices {
 										currSlice.Set(reflect.AppendSlice(currSlice, nt))
 									} else {
 										currSlice.Set(nt)
@@ -314,7 +314,7 @@ func (j jsonArray) IntoPointer(op decodeOperation, p, end int, base uintptr) (in
 							}
 						}
 					}
-					if Verbose {
+					if verbose {
 						fmt.Println("found list", string(b[start:p]))
 					}
 					return p, nil
@@ -323,7 +323,7 @@ func (j jsonArray) IntoPointer(op decodeOperation, p, end int, base uintptr) (in
 				var newPtr uintptr
 				if store {
 					posInPointers += itemSize
-					if Verbose {
+					if verbose {
 						fmt.Println("current pos", posInPointers, l)
 					}
 
@@ -333,7 +333,7 @@ func (j jsonArray) IntoPointer(op decodeOperation, p, end int, base uintptr) (in
 					}
 					if cap(pointers) < posInPointers {
 						l = l * 5 / 3
-						if Verbose {
+						if verbose {
 							fmt.Println("have to grow to", l)
 						}
 						np := make([]byte, l, l)
@@ -404,7 +404,7 @@ func (j jsonMaybeNull) IntoPointer(op decodeOperation, p, end int, base uintptr)
 	}
 	curPtr := reflect.NewAt(j.ptrType, unsafe.Pointer(base))
 
-	if Verbose {
+	if verbose {
 		fmt.Printf("cutPtr: isnull %t\n", curPtr.IsNil())
 		fmt.Printf("%s consuming maybe null at %#v\n", j.String(), curPtr.Interface())
 	}
@@ -414,7 +414,7 @@ func (j jsonMaybeNull) IntoPointer(op decodeOperation, p, end int, base uintptr)
 		curPtr.Set(newInstance)
 	}
 
-	if Verbose {
+	if verbose {
 		fmt.Printf("cutPtr: isnull %t\n", curPtr.IsNil())
 		fmt.Printf("%s consuming maybe null at %#v\n", j.String(), curPtr.Interface())
 	}
@@ -422,7 +422,7 @@ func (j jsonMaybeNull) IntoPointer(op decodeOperation, p, end int, base uintptr)
 	if reflect.Indirect(curPtr).IsNil() {
 		newInstance := reflect.New(j.underlyingType)
 
-		if Verbose {
+		if verbose {
 			fmt.Println("found nil, curptr is", curPtr.String())
 			fmt.Println("new instance", newInstance.String())
 			fmt.Println("setting curptr to", newInstance.String())
@@ -431,7 +431,7 @@ func (j jsonMaybeNull) IntoPointer(op decodeOperation, p, end int, base uintptr)
 
 		reflect.Indirect(curPtr).Set(newInstance)
 	} else {
-		if Verbose {
+		if verbose {
 			fmt.Println("not nil", curPtr.String())
 		}
 	}
@@ -440,7 +440,7 @@ func (j jsonMaybeNull) IntoPointer(op decodeOperation, p, end int, base uintptr)
 	if err != nil {
 		return n, err
 	}
-	if Verbose {
+	if verbose {
 		fmt.Println("found maybe null: ", string(b[p:n]))
 	}
 	return n, nil
@@ -453,7 +453,7 @@ type jsonInspect struct {
 }
 
 func newJsonInspect() *jsonInspect {
-	if Verbose {
+	if verbose {
 		fmt.Println("called newJsonInspect")
 	}
 	j := &jsonInspect{}
@@ -478,7 +478,7 @@ func (j jsonInspect) IntoPointer(op decodeOperation, p, end int, base uintptr) (
 		panic("bad value here " + fmt.Sprintf("%#v", op.mode))
 	}
 	b := op.rawData
-	if Verbose {
+	if verbose {
 		if base == 0 {
 			fmt.Println(fmt.Sprintf("%T", j), "discarding anything in", string(b[p:end]))
 		} else {
@@ -508,7 +508,7 @@ func (j jsonInspect) IntoPointer(op decodeOperation, p, end int, base uintptr) (
 				return n, err
 			}
 
-			if Verbose {
+			if verbose {
 				fmt.Println("inspected array at", string(b[p:n]))
 			}
 
@@ -526,7 +526,7 @@ func (j jsonInspect) IntoPointer(op decodeOperation, p, end int, base uintptr) (
 				return n, err
 			}
 
-			if Verbose {
+			if verbose {
 				fmt.Println("inspected object at", string(b[p:n]))
 			}
 
@@ -544,7 +544,7 @@ func (j jsonInspect) IntoPointer(op decodeOperation, p, end int, base uintptr) (
 				return n, err
 			}
 
-			if Verbose {
+			if verbose {
 				fmt.Println("inspected escaped string at", string(b[p:n]))
 			}
 
@@ -582,7 +582,7 @@ func (j jsonStringMap) IntoPointer(op decodeOperation, p, end int, base uintptr)
 		panic("bad value here " + fmt.Sprintf("%#v", op.mode))
 	}
 	b := op.rawData
-	if Verbose {
+	if verbose {
 		if op.mode == ModeSkip {
 			fmt.Println(fmt.Sprintf("%T", j), "discarding stringmap in", string(b[p:end]))
 		} else {
@@ -598,7 +598,7 @@ func (j jsonStringMap) IntoPointer(op decodeOperation, p, end int, base uintptr)
 	if store {
 		currentMap := (*map[string]string)(unsafe.Pointer(base))
 		if *currentMap == nil {
-			*currentMap = make(map[string]string, DefaultMapSize)
+			*currentMap = make(map[string]string, defaultMapSize)
 		}
 		cMap = *currentMap
 		lPtr, rPtr = uintptr(unsafe.Pointer(&lStr)), uintptr(unsafe.Pointer(&rStr))
@@ -624,7 +624,7 @@ func (j jsonStringMap) IntoPointer(op decodeOperation, p, end int, base uintptr)
 					if err != ErrUnexpectedMapEnd {
 						return n, err
 					}
-					if Verbose {
+					if verbose {
 						fmt.Println("found map:", string(b[mapStart:n+1]))
 					}
 					return n + 1, nil
@@ -699,7 +699,7 @@ func (j jsonMap) IntoPointer(op decodeOperation, p, end int, base uintptr) (int,
 		panic("bad value here " + fmt.Sprintf("%#v", op.mode))
 	}
 	b := op.rawData
-	if Verbose {
+	if verbose {
 		if op.mode == ModeSkip {
 			fmt.Println(fmt.Sprintf("%T", j), "discarding map in", string(b[p:end]))
 		} else {
@@ -714,7 +714,7 @@ func (j jsonMap) IntoPointer(op decodeOperation, p, end int, base uintptr) (int,
 	if store {
 		currentMap = reflect.Indirect(reflect.NewAt(j.all, unsafe.Pointer(base)))
 		if reflect.Indirect(currentMap).IsNil() {
-			newMap := reflect.Indirect(reflect.MakeMapWithSize(j.all, DefaultMapSize))
+			newMap := reflect.Indirect(reflect.MakeMapWithSize(j.all, defaultMapSize))
 			currentMap.Set(newMap)
 		}
 
@@ -750,7 +750,7 @@ func (j jsonMap) IntoPointer(op decodeOperation, p, end int, base uintptr) (int,
 					if err != ErrUnexpectedMapEnd {
 						return n, err
 					}
-					if Verbose {
+					if verbose {
 						fmt.Println("found map:", string(b[mapStart:n+1]))
 					}
 					return n + 1, nil
@@ -881,7 +881,7 @@ func newJsonObject(obj reflect.Type, des describer) *jsonObject {
 		j.addName(strings.ToLower(f.Name), f.Offset, false)
 		j.addName(strings.ToUpper(f.Name), f.Offset, false)
 		offsets[f.Offset] = des.Describe(f.Type)
-		if Verbose {
+		if verbose {
 			fmt.Printf("jsonObject: for %s.%s, use %#v\n", obj.String(), f.Name, offsets[f.Offset])
 		}
 	}
@@ -891,12 +891,12 @@ func newJsonObject(obj reflect.Type, des describer) *jsonObject {
 	var anything []interface{}
 	j.def = des.Describe(reflect.TypeOf(anything).Elem())
 
-	if Verbose {
+	if verbose {
 		fmt.Println("sorting fields", j.fields)
 	}
 	sort.Sort(j.fields)
 
-	if Verbose {
+	if verbose {
 		fmt.Println(obj.String(), j.fields)
 	}
 	return j
@@ -913,7 +913,7 @@ func (j jsonObject) ReportPlan(r *jsonReport) {
 			if !f.natural {
 				continue
 			}
-			r.Then("If the key is like %s, I'll:", string(f.bytes))
+			r.Then("If the key is like %#v, I'll:", string(f.bytes))
 			func() {
 				defer r.Deeper()()
 				j.offsets[f.offset].ReportPlan(r)
@@ -932,7 +932,7 @@ func (j jsonObject) IntoPointer(op decodeOperation, p, end int, base uintptr) (i
 		panic("bad value here " + fmt.Sprintf("%#v", op.mode))
 	}
 	b := op.rawData
-	if Verbose {
+	if verbose {
 		fmt.Println(j.String(), "consuming object in", string(b[p:end]))
 	}
 
@@ -965,7 +965,7 @@ func (j jsonObject) IntoPointer(op decodeOperation, p, end int, base uintptr) (i
 							handler = j.def
 							offset = 0
 
-							if Verbose {
+							if verbose {
 								fmt.Println("found key", string(b[start:p-1]))
 							}
 
@@ -988,24 +988,24 @@ func (j jsonObject) IntoPointer(op decodeOperation, p, end int, base uintptr) (i
 								foundN = i
 							}
 
-							if Verbose {
+							if verbose {
 								fmt.Println("searching for key returned", foundN, "/", len(j.fields))
 							}
 
 							if foundN < len(j.fields) {
 								f := j.fields[foundN]
 								if f.Equal(bytes) {
-									if Verbose {
+									if verbose {
 										fmt.Println("found handler for key", f)
 									}
 									offset = base + f.offset
 									handler = j.offsets[f.offset]
 								} else {
-									if Verbose {
+									if verbose {
 										fmt.Println("key was not found")
 									}
 								}
-							} else if Verbose {
+							} else if verbose {
 								fmt.Println("key was not found")
 							}
 
@@ -1029,7 +1029,7 @@ func (j jsonObject) IntoPointer(op decodeOperation, p, end int, base uintptr) (i
 					}
 				}
 				if thisChar == '}' {
-					if Verbose {
+					if verbose {
 						fmt.Println("found obj in:", string(b[objStart:p]))
 					}
 					return p, nil
@@ -1081,15 +1081,15 @@ type decodeOperation struct {
 	desc    jsonStoredProcedure
 }
 
-type Describers struct {
+type fastDescribers struct {
 	allTypes     sync.Map
 	pendingTypes sync.Map
 	generic      jsonStoredProcedure
 	lookAheads   chan decodeOperation
 }
 
-func NewDescriber() *Describers {
-	d := &Describers{lookAheads: make(chan decodeOperation, runtime.NumCPU())}
+func newDescriber() *fastDescribers {
+	d := &fastDescribers{lookAheads: make(chan decodeOperation, runtime.NumCPU())}
 	d.Store(reflect.TypeOf(map[string]string{}), jsonStringMap{})
 
 	for i := runtime.NumCPU(); i > 0; i-- {
@@ -1111,11 +1111,11 @@ func NewDescriber() *Describers {
 	return d
 }
 
-func (d *Describers) LearnAbout(t reflect.Type) jsonStoredProcedure {
+func (d *fastDescribers) LearnAbout(t reflect.Type) jsonStoredProcedure {
 	if t == nil {
 		panic("can't learn about nil type")
 	}
-	if Verbose {
+	if verbose {
 		fmt.Println("learning about", t.String())
 	}
 	switch t.Kind() {
@@ -1134,14 +1134,14 @@ func (d *Describers) LearnAbout(t reflect.Type) jsonStoredProcedure {
 	}
 }
 
-func (d *Describers) Store(t reflect.Type, proc jsonStoredProcedure) {
-	if Verbose {
+func (d *fastDescribers) Store(t reflect.Type, proc jsonStoredProcedure) {
+	if verbose {
 		fmt.Printf("encoder for the %d byte %s = %T\n", t.Size(), t.String(), proc)
 	}
 	d.allTypes.Store(t, proc)
 }
 
-func (d *Describers) Describe(t reflect.Type) jsonStoredProcedure {
+func (d *fastDescribers) Describe(t reflect.Type) jsonStoredProcedure {
 	use, found := d.allTypes.Load(t)
 	if found {
 		return use.(jsonStoredProcedure)
@@ -1153,7 +1153,7 @@ func (d *Describers) Describe(t reflect.Type) jsonStoredProcedure {
 
 	loading, already := d.pendingTypes.LoadOrStore(t, lockIt)
 	if already {
-		if Verbose {
+		if verbose {
 			fmt.Println("waiting for someone to complete", t.String())
 		}
 		found := loading.(*sync.Cond)
@@ -1170,7 +1170,7 @@ func (d *Describers) Describe(t reflect.Type) jsonStoredProcedure {
 	return newProc
 }
 
-func (d *Describers) ReportPlan(sample interface{}) jsonReport {
+func (d *fastDescribers) ReportPlan(sample interface{}) jsonReport {
 	j := &jsonReport{}
 	j.Then("Here's how I plan to decode %T", sample)
 	des := d.Describe(reflect.TypeOf(sample))
@@ -1178,23 +1178,23 @@ func (d *Describers) ReportPlan(sample interface{}) jsonReport {
 	return *j
 }
 
-func (d *Describers) Unmarshal(b []byte, to interface{}) error {
+func (d *fastDescribers) Unmarshal(b []byte, to interface{}) error {
 	t := reflect.TypeOf(to)
 	desc := d.Describe(t)
 
 	op := decodeOperation{desc: desc, rawData: b, mode: ModeAlloc}
-	if LookAhead {
+	if lookAhead {
 		op.done = make(chan bool)
 		d.lookAheads <- op
 	}
 
-	if !DryRun {
+	if !dryRun {
 		// create a pointer to whatever i've been given
 		v := reflect.ValueOf(to)
 
 		newPtr := reflect.NewAt(t, unsafe.Pointer(v.Pointer()))
 
-		if Verbose {
+		if verbose {
 			fmt.Println("created space", newPtr.String(), reflect.Indirect(newPtr).Interface(), newPtr.Pointer())
 			fmt.Printf("calling out to %T\n", desc)
 		}
@@ -1207,14 +1207,18 @@ func (d *Describers) Unmarshal(b []byte, to interface{}) error {
 		}
 	}
 
-	if LookAhead {
+	if lookAhead {
 		<-op.done
 	}
 	return nil
 }
 
-var Standard = NewDescriber()
+var standard = newDescriber()
 
 func Unmarshal(b []byte, to interface{}) error {
-	return Standard.Unmarshal(b, to)
+	return standard.Unmarshal(b, to)
+}
+
+func ReportPlan(of interface{}) jsonReport {
+	return standard.ReportPlan(of)
 }
