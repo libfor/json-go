@@ -1,4 +1,4 @@
-// +build !json.verbose
+// +build !verbose
 
 package json
 

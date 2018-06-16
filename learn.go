@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 	"unsafe"
@@ -32,6 +33,12 @@ type EasyType struct {
 	Nested    *Nested
 	SomeList  []string
 	EmptyList []string
+}
+
+func init() {
+	if Verbose {
+		fmt.Println("libfor/json in verbose mode")
+	}
 }
 
 type jsonDecoder interface {
@@ -128,8 +135,6 @@ type jsonArray struct {
 	sliceType    reflect.Type
 	internalProc jsonStoredProcedure
 	internalType reflect.Type
-
-	blankSpace []byte
 }
 
 func newJsonArray(t reflect.Type, d describer) *jsonArray {
@@ -137,8 +142,6 @@ func newJsonArray(t reflect.Type, d describer) *jsonArray {
 	j := &jsonArray{sliceType: t, internalProc: d.Describe(e)}
 
 	j.internalType = e
-	itemSize := int(e.Size())
-	j.blankSpace = make([]byte, itemSize)
 	return j
 }
 
@@ -298,13 +301,70 @@ func (j jsonAnything) IntoPointer(op decodeOperation, p, end int, base uintptr) 
 			return (&jsonObject{}).IntoPointer(op, p-1, end, base)
 		}
 		if thisChar == '"' {
-			return jsonRawString{}.IntoPointer(op, p-1, end, base)
+			return jsonEscapedString{}.IntoPointer(op, p-1, end, base)
 		}
 	}
 	return 0, ErrUnexpectedEOF
 }
 
 var jsonSkip = jsonAnything{}
+
+type jsonStringMap struct{}
+
+func (j jsonStringMap) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	b := op.rawData
+	if Verbose {
+		fmt.Println("looking for map in", string(b[p:end]))
+	}
+	currentMap := (*map[string]string)(unsafe.Pointer(base))
+	if *currentMap == nil {
+		*currentMap = make(map[string]string)
+	}
+	cMap := *currentMap
+
+	var lStr, rStr string
+	lPtr, rPtr := uintptr(unsafe.Pointer(&lStr)), uintptr(unsafe.Pointer(&rStr))
+
+	for p < end {
+		thisChar := b[p]
+		p += 1
+		if thisChar == '{' {
+			mapStart := p - 1
+			for p < end {
+			anotherKey:
+				thisChar := b[p]
+				p += 1
+				if thisChar == '"' {
+					n, err := jsonRawString{}.IntoPointer(op, p-1, end, lPtr)
+					if err != nil {
+						return n, err
+					}
+					p = n
+					for p < end {
+						thisChar := b[p]
+						p += 1
+						if thisChar == ':' {
+							n, err := jsonEscapedString{}.IntoPointer(op, p, end, rPtr)
+							if err != nil {
+								return n, err
+							}
+							p = n
+							cMap[lStr] = rStr
+							goto anotherKey
+						}
+					}
+				}
+				if thisChar == '}' {
+					if Verbose {
+						fmt.Println("found map:", string(b[mapStart:p]))
+					}
+					return p, nil
+				}
+			}
+		}
+	}
+	return end, ErrUnexpectedEOF
+}
 
 type jsonMap struct {
 	all reflect.Type
@@ -388,22 +448,112 @@ func (j jsonMap) IntoPointer(op decodeOperation, p, end int, base uintptr) (int,
 	return end, ErrUnexpectedEOF
 }
 
+type field struct {
+	offset uintptr
+	bytes  []byte
+}
+
+func (f field) String() string {
+	return fmt.Sprintf(`%s at %d`, string(f.bytes), f.offset)
+}
+
+func (f field) Less(than []byte) bool {
+	i := 0
+	for {
+		if i == len(f.bytes) {
+			return true
+		}
+		if i == len(than) {
+			return false
+		}
+
+		if f.bytes[i] != than[i] {
+			return f.bytes[i] < than[i]
+		}
+
+		i += 1
+	}
+}
+
+func (f field) Greater(than []byte) bool {
+	i := 0
+	for {
+		if i == len(than) {
+			return true
+		}
+		if i == len(f.bytes) {
+			return false
+		}
+
+		if f.bytes[i] != than[i] {
+			return f.bytes[i] > than[i]
+		}
+
+		i += 1
+	}
+}
+
+func (f field) Equal(than []byte) bool {
+	i := 0
+	if len(f.bytes) != len(than) {
+		return false
+	}
+
+	for {
+		if i == len(f.bytes) {
+			return true
+		}
+		if f.bytes[i] != than[i] {
+			return f.bytes[i] < than[i]
+		}
+		i += 1
+	}
+}
+
+type fields []field
+
+func (f fields) Len() int {
+	return len(f)
+}
+
+func (f fields) Less(a, b int) (res bool) {
+	return f[a].Less(f[b].bytes)
+}
+
+func (f fields) Swap(a, b int) {
+	tmp := f[b]
+	f[b] = f[a]
+	f[a] = tmp
+}
+
 type jsonObject struct {
-	fields  map[string]uintptr
+	fields  fields
 	offsets []jsonStoredProcedure
+}
+
+func (j *jsonObject) addName(name string, offset uintptr) {
+	j.fields = append(j.fields, field{offset: offset, bytes: []byte(name)})
 }
 
 func newJsonObject(obj reflect.Type, des describer) *jsonObject {
 	offsets := make([]jsonStoredProcedure, int(obj.Size()), int(obj.Size()))
-	fields := make(map[string]uintptr, obj.NumField())
-	j := &jsonObject{offsets: offsets, fields: fields}
+	j := &jsonObject{offsets: offsets}
 	for i := 0; i < obj.NumField(); i++ {
 		f := obj.Field(i)
-		fields[strings.ToLower(f.Name)] = f.Offset
-		fields[strings.ToUpper(f.Name)] = f.Offset
-		fields[f.Name] = f.Offset
+		j.addName(f.Name, f.Offset)
+		j.addName(strings.ToLower(f.Name), f.Offset)
+		j.addName(strings.ToUpper(f.Name), f.Offset)
 		offsets[f.Offset] = des.Describe(f.Type)
+		if Verbose {
+			fmt.Printf("jsonObject: for %s.%s, use %#v\n", obj.String(), f.Name, offsets[f.Offset])
+		}
 	}
+
+	if Verbose {
+		fmt.Println("sorting fields", j.fields)
+	}
+	sort.Sort(j.fields)
+
 	if Verbose {
 		fmt.Println(obj.String(), j.fields)
 	}
@@ -415,6 +565,7 @@ func (j jsonObject) IntoPointer(op decodeOperation, p, end int, base uintptr) (i
 	if Verbose {
 		fmt.Println("looking for object in", string(b[p:end]))
 	}
+
 	for p < end {
 		thisChar := b[p]
 		if thisChar == ']' {
@@ -422,6 +573,9 @@ func (j jsonObject) IntoPointer(op decodeOperation, p, end int, base uintptr) (i
 		}
 		p += 1
 		if thisChar == '{' {
+			var handler jsonStoredProcedure
+			var offset uintptr
+
 			objStart := p - 1
 			for p < end {
 			anotherKey:
@@ -433,21 +587,57 @@ func (j jsonObject) IntoPointer(op decodeOperation, p, end int, base uintptr) (i
 						thisChar := b[p]
 						p += 1
 						if thisChar == '"' {
-							key := string(b[start : p-1])
+							handler = jsonSkip
+							offset = 0
+
+							if Verbose {
+								fmt.Println("found key", string(b[start:p-1]))
+							}
+
+							bytes := b[start : p-1]
+
+							fs := j.fields
+							var foundN int
+
+							{ // find an N of a field using binary search
+								i, j := 0, len(fs)
+								for i < j {
+									h := (i + j) >> 1
+									// i ≤ h < j
+									if !fs[h].Greater(bytes) {
+										i = h + 1
+									} else {
+										j = h
+									}
+								}
+								foundN = i
+							}
+
+							// n := sort.Search(len(j.fields), func(i int) bool {
+							// 	return j.fields[i].Greater(bytes)
+							// })
+
+							if Verbose {
+								fmt.Println("searching for key returned", foundN, "/", len(j.fields))
+							}
+							if foundN < len(j.fields) {
+								f := j.fields[foundN]
+								if Verbose {
+									fmt.Println("which looks like", f)
+								}
+								if f.Equal(bytes) {
+									if Verbose {
+										fmt.Println("found handler for key", f)
+									}
+									offset = base + f.offset
+									handler = j.offsets[f.offset]
+								}
+							}
+
 							for p < end {
 								thisChar := b[p]
 								p += 1
 								if thisChar == ':' {
-									var handler jsonStoredProcedure
-									var offset uintptr
-									handler = jsonSkip
-
-									fieldOffset, ok := j.fields[key]
-									if ok {
-										offset = base + fieldOffset
-										handler = j.offsets[fieldOffset]
-									}
-
 									n, err := handler.IntoPointer(op, p, end, offset)
 									if err != nil {
 										return n, err
@@ -507,16 +697,8 @@ func quickScan(b []byte) (ids [][3]int) {
 	return
 }
 
-type foundString struct {
-	pos        int
-	end        int
-	destinaton *string
-	raw        bool
-}
-
 type decodeOperation struct {
 	rawData []byte
-	strings *[]foundString
 }
 
 type Describers struct {
@@ -525,7 +707,9 @@ type Describers struct {
 }
 
 func NewDescriber() *Describers {
-	return &Describers{}
+	d := &Describers{}
+	d.Store(reflect.TypeOf(map[string]string{}), jsonStringMap{})
+	return d
 }
 
 func (d *Describers) LearnAbout(t reflect.Type) jsonStoredProcedure {
@@ -543,6 +727,13 @@ func (d *Describers) LearnAbout(t reflect.Type) jsonStoredProcedure {
 	default:
 		panic(fmt.Sprintf("unhandled type %s", t))
 	}
+}
+
+func (d *Describers) Store(t reflect.Type, proc jsonStoredProcedure) {
+	if Verbose {
+		fmt.Printf("storing new encoder for %s: %T\n", t.String(), proc)
+	}
+	d.allTypes.Store(t, proc)
 }
 
 func (d *Describers) Describe(t reflect.Type) jsonStoredProcedure {
@@ -566,11 +757,8 @@ func (d *Describers) Describe(t reflect.Type) jsonStoredProcedure {
 	}
 
 	newProc := d.LearnAbout(t)
-	if Verbose {
-		fmt.Printf("storing new encoder %s: %T\n", t.String(), newProc)
-	}
+	d.Store(t, newProc)
 
-	d.allTypes.Store(t, newProc)
 	lockIt.Broadcast()
 	d.pendingTypes.Delete(t)
 

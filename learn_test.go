@@ -17,7 +17,13 @@ var str = []byte(`  {
 	 "SomeList": [ "yay", "huge suuuuuccess", "its big", "wow", "im amazed"],
 	 "Name":"world"  } `)
 
-var strNoMap = []byte(`  { 
+var strOnlyMap = []byte(`
+{  "Tags"   :  {   "a": "lol", "b": "yay" }
+}
+
+`)
+
+var strWithList = []byte(`  { 
 	"someSillyObj": { "nice": "waste of time" },  "Nested": {   "Amazing"
 		: "yeah i know" },
 	"bad": "missing", "Food":    
@@ -69,21 +75,21 @@ func TestEasyUnmarshal(t *testing.T) {
 func BenchmarkNewSingle(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		t := &TestType{SomeList: []string{"already in"}}
-		Unmarshal(strNoMap, t)
+		Unmarshal(strWithList, t)
 	}
 }
 
 func BenchmarkOldSingle(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		t := &TestType{SomeList: []string{"already in"}}
-		json.Unmarshal(strNoMap, t)
+		json.Unmarshal(strWithList, t)
 	}
 }
 
 func BenchmarkEasySingle(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		t := &EasyType{SomeList: []string{"already in"}}
-		easyjson.Unmarshal(strNoMap, t)
+		easyjson.Unmarshal(strWithList, t)
 	}
 }
 
@@ -92,7 +98,7 @@ func BenchmarkNewParallel(b *testing.B) {
 		func(pb *testing.PB) {
 			for pb.Next() {
 				t := &TestType{}
-				Unmarshal(str, t)
+				Unmarshal(strOnlyMap, t)
 			}
 		},
 	)
@@ -103,7 +109,7 @@ func BenchmarkOldParallel(b *testing.B) {
 		func(pb *testing.PB) {
 			for pb.Next() {
 				t := &TestType{}
-				json.Unmarshal(str, t)
+				json.Unmarshal(strOnlyMap, t)
 			}
 		},
 	)
@@ -114,7 +120,7 @@ func BenchmarkEasyParallel(b *testing.B) {
 		func(pb *testing.PB) {
 			for pb.Next() {
 				t := &EasyType{}
-				easyjson.Unmarshal(str, t)
+				easyjson.Unmarshal(strOnlyMap, t)
 			}
 		},
 	)
