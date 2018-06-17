@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"github.com/json-iterator/go"
 	"github.com/mailru/easyjson"
+	"github.com/zuoxinyu/jzon"
 	"reflect"
 	"testing"
 )
@@ -187,6 +188,13 @@ func BenchmarkSerially_Easyjson(b *testing.B) {
 	}
 }
 
+func BenchmarkSerially_Jzon(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		t := &testType{SomeList: []string{"already in"}}
+		jzon.Deserialize(strWithList, t)
+	}
+}
+
 func BenchmarkParallel_Libfor(b *testing.B) {
 	b.RunParallel(
 		func(pb *testing.PB) {
@@ -254,6 +262,24 @@ func BenchmarkParallel_Easyjson(b *testing.B) {
 				easyjson.Unmarshal(str2, t)
 				t = &easyType{}
 				easyjson.Unmarshal(str3, t)
+			}
+		},
+	)
+}
+
+func BenchmarkParallel_Jzon(b *testing.B) {
+	b.RunParallel(
+		func(pb *testing.PB) {
+			var t *testType
+			for pb.Next() {
+				t = &testType{}
+				jzon.Deserialize(str, t)
+				t = &testType{}
+				jzon.Deserialize(str1, t)
+				t = &testType{}
+				jzon.Deserialize(str2, t)
+				t = &testType{}
+				jzon.Deserialize(str3, t)
 			}
 		},
 	)
