@@ -85,32 +85,24 @@ Look for a {, then repeatedly:
 
 # unmarshalling benchmarks
 
-Note, "Easyjson" uses code-gen
-
-Run using: go test -bench=. -run="none" -benchmem -cpu=1,3
+Run using: `go test -bench=. -run="none" -benchmem -cpu=2`, note that EasyJson has a code-generation step and does not use reflection
 
 Serial benchmark
 
 ```
-BenchmarkSerially_Libfor         	 1000000	      1945 ns/op	     496 B/op	      14 allocs/op
-BenchmarkSerially_Libfor-3       	 1000000	      1875 ns/op	     496 B/op	      14 allocs/op
-BenchmarkSerially_StdlibJson     	  200000	      6392 ns/op	     912 B/op	      26 allocs/op
-BenchmarkSerially_StdlibJson-3   	  200000	      6192 ns/op	     912 B/op	      26 allocs/op
-BenchmarkSerially_Iterjson       	 1000000	      2154 ns/op	     704 B/op	      23 allocs/op
-BenchmarkSerially_Iterjson-3     	 1000000	      2031 ns/op	     704 B/op	      23 allocs/op
-BenchmarkSerially_Easyjson       	 1000000	      1628 ns/op	     592 B/op	      15 allocs/op
-BenchmarkSerially_Easyjson-3     	 1000000	      1534 ns/op	     592 B/op	      15 allocs/op
+BenchmarkSerially_Libfor-2       	 1000000	      1921 ns/op	     496 B/op	      14 allocs/op
+BenchmarkSerially_StdlibJson-2   	  200000	      6644 ns/op	     912 B/op	      26 allocs/op
+BenchmarkSerially_Iterjson-2     	 1000000	      2145 ns/op	     704 B/op	      23 allocs/op
+BenchmarkSerially_Easyjson-2     	 1000000	      1817 ns/op	     592 B/op	      15 allocs/op
+BenchmarkSerially_Jzon-2         	  300000	      5009 ns/op	    2824 B/op	      64 allocs/op
 ```
 
 Parallel benchmark
 
 ```
-BenchmarkParallel_Libfor         	  100000	     12445 ns/op	    5488 B/op	     124 allocs/op
-BenchmarkParallel_Libfor-3       	  300000	      4722 ns/op	    5488 B/op	     124 allocs/op
-BenchmarkParallel_StdlibJson     	   50000	     31767 ns/op	    6672 B/op	     168 allocs/op
-BenchmarkParallel_StdlibJson-3   	  200000	     11707 ns/op	    6672 B/op	     168 allocs/op
-BenchmarkParallel_Iterjson       	  100000	     13975 ns/op	    5608 B/op	     161 allocs/op
-BenchmarkParallel_Iterjson-3     	  300000	      5256 ns/op	    5608 B/op	     161 allocs/op
-BenchmarkParallel_Easyjson       	  200000	      8999 ns/op	    4832 B/op	     103 allocs/op
-BenchmarkParallel_Easyjson-3     	  500000	      3497 ns/op	    4832 B/op	     103 allocs/op
+BenchmarkParallel_Libfor-2       	  200000	      7513 ns/op	    5488 B/op	     124 allocs/op
+BenchmarkParallel_StdlibJson-2   	  100000	     18807 ns/op	    6672 B/op	     168 allocs/op
+BenchmarkParallel_Iterjson-2     	  200000	      7589 ns/op	    5608 B/op	     161 allocs/op
+BenchmarkParallel_Easyjson-2     	  300000	      5229 ns/op	    4832 B/op	     103 allocs/op
+BenchmarkParallel_Jzon-2         	  100000	     17108 ns/op	   12603 B/op	     275 allocs/op
 ```
