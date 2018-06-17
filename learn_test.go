@@ -55,6 +55,24 @@ var strWithList = []byte(`  {
 
 	 }  `)
 
+func TestNumberInt(t *testing.T) {
+	var i int
+	iData := []byte("100")
+	t.Log(ReportPlan(&i))
+
+	t.Logf("before: %d", i)
+	Unmarshal(iData, &i)
+	t.Logf("want 100, got %d", i)
+	if i != 100 {
+		t.Fail()
+	}
+}
+
+func TestNilPtr(t *testing.T) {
+	var dst *string
+	Unmarshal([]byte(`"hi"`), dst)
+}
+
 func TestQuickScan(t *testing.T) {
 	ids := quickScan(str)
 	for _, id := range ids {
@@ -122,6 +140,43 @@ func TestReporting(t *testing.T) {
 		t.Log(d.String())
 	}
 
+}
+
+type simpleType struct {
+	Name string
+}
+
+func TestSimple(t *testing.T) {
+	var dst simpleType
+	src := []byte(`{"name": "dan"}`)
+	if err := Unmarshal(src, &dst); err != nil {
+		t.Error(err)
+	}
+	if dst.Name != "dan" {
+		t.Errorf(`name = %#v, expected "dan"`, dst.Name)
+	}
+}
+
+type nestedType struct {
+	ParentName string
+	SimpleType *simpleType
+}
+
+func TestNested(t *testing.T) {
+	var dst nestedType
+	src := []byte(`{"parentname": "libfor",  "simpletype": {"name": "dan"}}`)
+	if err := Unmarshal(src, &dst); err != nil {
+		t.Error(err)
+	}
+	if dst.ParentName != "libfor" {
+		t.Errorf(`name = %#v, expected "libfor"`, dst.ParentName)
+	}
+	if dst.SimpleType == nil {
+		t.FailNow()
+	}
+	if dst.SimpleType.Name != "dan" {
+		t.Errorf(`simple.name = %#v, expected "dan"`, dst.SimpleType.Name)
+	}
 }
 
 func TestCorrectness3(t *testing.T) {

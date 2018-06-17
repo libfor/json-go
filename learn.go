@@ -370,7 +370,7 @@ type jsonMaybeNull struct {
 }
 
 func (j jsonMaybeNull) String() string {
-	return fmt.Sprintf(`space-maker for %s`, j.underlyingType.String())
+	return fmt.Sprintf(`space-maker for %s`, j.ptrType.String())
 }
 
 func (j jsonMaybeNull) ReportPlan(r *jsonReport) {
@@ -395,55 +395,37 @@ func (j jsonMaybeNull) IntoPointer(op decodeOperation, p, end int, base uintptr)
 	if base == 0 && op.mode != ModeSkip {
 		panic("bad value here " + fmt.Sprintf("%#v", op.mode))
 	}
-	b := op.rawData
-	// base is a pointer to a potentially-nil pointer to a T
-	// we need to ensure it points to an initialized pointer to an initialized T
-
 	if op.mode == ModeSkip {
 		return j.underlyingHandler.IntoPointer(op, p, end, 0)
 	}
-	curPtr := reflect.NewAt(j.ptrType, unsafe.Pointer(base))
+
+	// base is a non-nil **T
+	// *T has to be initialized if it's not already, and point to a valid T space
+	curPtr := reflect.Indirect(reflect.NewAt(j.ptrType, unsafe.Pointer(base)))
+
+	var maybe2 string
 
 	if verbose {
-		fmt.Printf("cutPtr: isnull %t\n", curPtr.IsNil())
-		fmt.Printf("%s consuming maybe null at %#v\n", j.String(), curPtr.Interface())
+		fmt.Printf("alloc> curent Ptr: %s, %#v, isnull %t\n", curPtr.String(), curPtr.Interface(), curPtr.IsNil())
+		maybe2 = fmt.Sprintf("alloc> curent Ptr: %s, %#v, isnull %t\n", curPtr.String(), curPtr.Interface(), curPtr.IsNil())
 	}
 
 	if curPtr.IsNil() {
-		newInstance := reflect.New(j.ptrType)
+		// better create a new instance at that new pointer
+		if verbose {
+			fmt.Println("new underlying ptr")
+		}
+		newInstance := reflect.New(j.underlyingType)
 		curPtr.Set(newInstance)
 	}
 
+	n, err := j.underlyingHandler.IntoPointer(op, p, end, curPtr.Pointer())
 	if verbose {
-		fmt.Printf("cutPtr: isnull %t\n", curPtr.IsNil())
-		fmt.Printf("%s consuming maybe null at %#v\n", j.String(), curPtr.Interface())
-	}
+		fmt.Printf("before: %s", maybe2)
+		fmt.Printf("after : alloc> curent Ptr: %s, %#v, isnull %t\n", curPtr.String(), curPtr.Interface(), curPtr.IsNil())
 
-	if reflect.Indirect(curPtr).IsNil() {
-		newInstance := reflect.New(j.underlyingType)
-
-		if verbose {
-			fmt.Println("found nil, curptr is", curPtr.String())
-			fmt.Println("new instance", newInstance.String())
-			fmt.Println("setting curptr to", newInstance.String())
-			fmt.Printf("... AKA %#v\n", newInstance.Interface())
-		}
-
-		reflect.Indirect(curPtr).Set(newInstance)
-	} else {
-		if verbose {
-			fmt.Println("not nil", curPtr.String())
-		}
 	}
-
-	n, err := j.underlyingHandler.IntoPointer(op, p, end, reflect.Indirect(curPtr).Pointer())
-	if err != nil {
-		return n, err
-	}
-	if verbose {
-		fmt.Println("found maybe null: ", string(b[p:n]))
-	}
-	return n, nil
+	return n, err
 }
 
 type jsonInspect struct {
@@ -652,6 +634,21 @@ func (j jsonStringMap) IntoPointer(op decodeOperation, p, end int, base uintptr)
 		}
 	}
 	return end, ErrNoBrace
+}
+
+type jsonNumber struct{}
+
+func newJsonNumber(r reflect.Type, des describer) jsonNumber {
+	return jsonNumber{}
+}
+
+func (j jsonNumber) ReportPlan(r *jsonReport) {}
+
+func (j jsonNumber) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
+	if verbose {
+		fmt.Println("looking at int", *(*int)(unsafe.Pointer(base)))
+	}
+	return p, nil
 }
 
 type jsonMap struct {
@@ -1118,6 +1115,11 @@ func (d *fastDescribers) LearnAbout(t reflect.Type) jsonStoredProcedure {
 	if verbose {
 		fmt.Println("learning about", t.String())
 	}
+
+	var someNumber int
+	if t.AssignableTo(reflect.TypeOf(someNumber)) {
+		return newJsonNumber(t, d)
+	}
 	switch t.Kind() {
 	case reflect.Ptr:
 		return newMaybeNull(t, d)
@@ -1130,7 +1132,7 @@ func (d *fastDescribers) LearnAbout(t reflect.Type) jsonStoredProcedure {
 	case reflect.Slice:
 		return newJsonArray(t, d)
 	default:
-		panic(fmt.Sprintf("unhandled type %s", t))
+		panic(fmt.Sprintf("unhandled type %s", t.Kind()))
 	}
 }
 
@@ -1179,7 +1181,14 @@ func (d *fastDescribers) ReportPlan(sample interface{}) jsonReport {
 }
 
 func (d *fastDescribers) Unmarshal(b []byte, to interface{}) error {
-	t := reflect.TypeOf(to)
+	v := reflect.ValueOf(to)
+	t := v.Type()
+
+	if verbose {
+		fmt.Println("unmarshal called with", v.String())
+		fmt.Printf("given %#v\n", v.Interface())
+	}
+
 	desc := d.Describe(t)
 
 	op := decodeOperation{desc: desc, rawData: b, mode: ModeAlloc}
@@ -1190,18 +1199,15 @@ func (d *fastDescribers) Unmarshal(b []byte, to interface{}) error {
 
 	if !dryRun {
 		// create a pointer to whatever i've been given
-		v := reflect.ValueOf(to)
+		// if we looked at a T, we need a *T for the handler
 
-		newPtr := reflect.NewAt(t, unsafe.Pointer(v.Pointer()))
-
+		indirect := reflect.New(t)
+		ch := reflect.Indirect(indirect)
 		if verbose {
-			fmt.Println("created space", newPtr.String(), reflect.Indirect(newPtr).Interface(), newPtr.Pointer())
-			fmt.Printf("calling out to %T\n", desc)
+			fmt.Printf("setup> got a %s going in to a %s\n", v.String(), ch.String())
 		}
-
-		reflect.Indirect(newPtr).Set(v)
-
-		_, err := desc.IntoPointer(op, 0, len(b), newPtr.Pointer())
+		reflect.Indirect(indirect).Set(v)
+		_, err := desc.IntoPointer(op, 0, len(b), indirect.Pointer())
 		if err != nil {
 			return err
 		}
