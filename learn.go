@@ -636,19 +636,36 @@ func (j jsonStringMap) IntoPointer(op decodeOperation, p, end int, base uintptr)
 	return end, ErrNoBrace
 }
 
-type jsonNumber struct{}
-
-func newJsonNumber(r reflect.Type, des describer) jsonNumber {
-	return jsonNumber{}
+type jsonNumber struct {
+	bits   int
+	signed bool
 }
 
-func (j jsonNumber) ReportPlan(r *jsonReport) {}
+func newJsonNumber(r reflect.Type, des describer, signed bool, bits int) jsonNumber {
+	return jsonNumber{bits: bits, signed: signed}
+}
+
+func (j jsonNumber) ReportPlan(r *jsonReport) {
+	r.Then("Somehow fill out the *int passed to me")
+}
 
 func (j jsonNumber) IntoPointer(op decodeOperation, p, end int, base uintptr) (int, error) {
 	if verbose {
 		fmt.Println("looking at int", *(*int)(unsafe.Pointer(base)))
 	}
-	return p, nil
+
+	for p < end {
+		thisChar := op.rawData[p]
+		if thisChar >= '0' && thisChar <= '9' {
+			start := p
+			if verbose {
+				fmt.Println("found int at?", string(op.rawData[start:start+2]))
+			}
+		}
+		p += 1
+	}
+
+	return p, ErrUnexpectedEOF
 }
 
 type jsonMap struct {
@@ -1081,7 +1098,6 @@ type decodeOperation struct {
 type fastDescribers struct {
 	allTypes     sync.Map
 	pendingTypes sync.Map
-	generic      jsonStoredProcedure
 	lookAheads   chan decodeOperation
 }
 
@@ -1116,20 +1132,28 @@ func (d *fastDescribers) LearnAbout(t reflect.Type) jsonStoredProcedure {
 		fmt.Println("learning about", t.String())
 	}
 
-	var someNumber int
-	if t.AssignableTo(reflect.TypeOf(someNumber)) {
-		return newJsonNumber(t, d)
-	}
 	switch t.Kind() {
+	case reflect.String:
+		return jsonEscapedString{}
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return newJsonNumber(t, d, true, t.Bits())
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return newJsonNumber(t, d, false, t.Bits())
+	case reflect.Float32, reflect.Float64:
+		panic("floats not handled yet")
+		return newJsonNumber(t, d, true, t.Bits())
+	case reflect.Bool:
+		panic("bool not handled yet")
 	case reflect.Ptr:
 		return newMaybeNull(t, d)
 	case reflect.Map:
 		return newJsonMap(t, d)
-	case reflect.String:
-		return jsonEscapedString{}
 	case reflect.Struct:
 		return newJsonObject(t, d)
 	case reflect.Slice:
+		return newJsonArray(t, d)
+	case reflect.Array:
+		panic("array not handled yet")
 		return newJsonArray(t, d)
 	default:
 		panic(fmt.Sprintf("unhandled type %s", t.Kind()))
@@ -1146,7 +1170,11 @@ func (d *fastDescribers) Store(t reflect.Type, proc jsonStoredProcedure) {
 func (d *fastDescribers) Describe(t reflect.Type) jsonStoredProcedure {
 	use, found := d.allTypes.Load(t)
 	if found {
-		return use.(jsonStoredProcedure)
+		if asProc, ok := use.(jsonStoredProcedure); ok {
+			return asProc
+		} else {
+			return nil
+		}
 	}
 
 	l := sync.Mutex{}

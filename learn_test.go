@@ -57,7 +57,7 @@ var strWithList = []byte(`  {
 
 func TestNumberInt(t *testing.T) {
 	var i int
-	iData := []byte("100")
+	iData := []byte("  100   ")
 	t.Log(ReportPlan(&i))
 
 	t.Logf("before: %d", i)
