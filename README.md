@@ -1,6 +1,14 @@
 # json-go
 Uses reflection to read and write JSON with nearly the performance of codegen
 
+# usage
+
+```
+var myDest interface{}
+var myData []byte = []byte(`  { "foo"  : ["bar",  "baz"] , "nested":{  "of":"course"}}   `)
+json.Unmarshal(myData, &myDest)
+```
+
 # report plan
 
 allows you to see the decoding plan for any given type, similar to the sql concept of "EXPLAIN"
