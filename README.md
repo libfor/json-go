@@ -1,6 +1,80 @@
 # json-go
 Uses reflection to read and write JSON with nearly the performance of codegen
 
+# report plan
+
+allows you to see the decoding plan for any given type, similar to the sql concept of "EXPLAIN"
+
+```
+Here's how I plan to decode **json.testType
+Check to see if I have a nil **json.testType
+  If so, create a *json.testType
+Check to see if I have a nil *json.testType
+  If so, create a json.testType
+Look for a {, then repeatedly:
+  Get a key by scanning for raw bytes
+  Binary search for that key through 21 handlers
+  If the key is like "EmptyList", I'll:
+    Search for [, returning if I find } or ]
+    Repeatedly...
+      Search for ", returning if I find } or ]
+      Search for closing "
+      Create a string in the base from the bytes I found
+    Write that new array into the pointer
+  If the key is like "Food", I'll:
+    Search for ", returning if I find } or ]
+    Search for closing "
+    Create a string in the base from the bytes I found
+  If the key is like "Name", I'll:
+    Search for ", returning if I find } or ]
+    Search for closing "
+    Create a string in the base from the bytes I found
+  If the key is like "Nested", I'll:
+    Check to see if I have a nil *json.nested
+      If so, create a json.nested
+    Look for a {, then repeatedly:
+      Get a key by scanning for raw bytes
+      Binary search for that key through 3 handlers
+      If the key is like "Amazing", I'll:
+        Search for ", returning if I find } or ]
+        Search for closing "
+        Create a string in the base from the bytes I found
+      If it's any other key, I'll:
+        If I get a {, I'll pass it off as a map[string]interface{}
+        If I get a [, I'll pass it off as a []interface{}
+        If I get a ", I'll pass it off as a string
+        I'll dereference the result into the interface{} in the base pointer
+  If the key is like "SomeList", I'll:
+    Search for [, returning if I find } or ]
+    Repeatedly...
+      Search for ", returning if I find } or ]
+      Search for closing "
+      Create a string in the base from the bytes I found
+    Write that new array into the pointer
+  If the key is like "SurpriseMe", I'll:
+    If I get a {, I'll pass it off as a map[string]interface{}
+    If I get a [, I'll pass it off as a []interface{}
+    If I get a ", I'll pass it off as a string
+    I'll dereference the result into the interface{} in the base pointer
+  If the key is like "Tags", I'll:
+    Look for a {, create a map[string]string, then repeatedly:
+      To get a key, I'll:
+        Search for ", returning if I find } or ]
+        Search for closing "
+        Create a string in the base from the bytes I found
+      To get a value, I'll:
+        Search for ", returning if I find } or ]
+        Search for closing "
+        Create a string in the base from the bytes I found
+      Save it in the map
+    Store the new map in the base pointer
+  If it's any other key, I'll:
+    If I get a {, I'll pass it off as a map[string]interface{}
+    If I get a [, I'll pass it off as a []interface{}
+    If I get a ", I'll pass it off as a string
+    I'll dereference the result into the interface{} in the base pointer
+```
+
 # unmarshalling benchmarks
 
 Note, "Easyjson" uses code-gen
