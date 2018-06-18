@@ -99,20 +99,22 @@ func TestInterface(t *testing.T) {
 }
 
 func TestCorrectnessMixed(t *testing.T) {
-	obj := &testType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
-	err := Unmarshal(str, obj)
+	for _, str := range [][]byte{str, str1, str2, str3} {
+		obj := &testType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
+		err := Unmarshal(str, obj)
 
-	obj2 := &testType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
-	err2 := json.Unmarshal(str, obj2)
+		obj2 := &testType{SomeList: []string{"im already here"}, Tags: map[string]string{"temp": "temp"}}
+		err2 := json.Unmarshal(str, obj2)
 
-	t.Logf("obj: \n%#v, err: %s", obj, err)
-	t.Logf("obj2: \n%#v, err2: %s", obj2, err2)
+		t.Logf("obj: \n%#v, err: %s", obj, err)
+		t.Logf("obj2: \n%#v, err2: %s", obj2, err2)
 
-	t.Logf("obj.Nested: \n%#v, err: %s", obj.Nested, err)
-	t.Logf("obj2.Nested: \n%#v, err2: %s", obj2.Nested, err2)
-	if !reflect.DeepEqual(obj, obj2) || !reflect.DeepEqual(err, err2) {
-		t.Error("different outcomes")
+		t.Logf("obj.Nested: \n%#v, err: %s", obj.Nested, err)
+		t.Logf("obj2.Nested: \n%#v, err2: %s", obj2.Nested, err2)
+		if !reflect.DeepEqual(obj, obj2) || !reflect.DeepEqual(err, err2) {
+			t.Error("different outcomes")
 
+		}
 	}
 }
 
